@@ -1,0 +1,106 @@
+version: "3.2"
+services:
+
+  nginx:
+    image: nginx:alpine
+    container_name: 'ticketing_nginx'
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: always
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}/${NGINX_CONF}://etc/nginx/nginx.conf
+      - ${BASE_PATH}/${APP_FOLDER}/${SSL_CERTS}://etc/ssl/
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      - apache
+      - laravelecho
+
+  
+  php:
+    build: './.docker/php/'
+    container_name: 'ticketing_php'
+    working_dir: /var/www/html
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}://var/www/html/
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      - apache
+
+  apache:
+    image: httpd:2.4.33-alpine
+    container_name: 'ticketing_apache'
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}://var/www/html/
+      - ${BASE_PATH}/${APP_FOLDER}/${HTTPD_CONF}://usr/local/apache2/conf/httpd.conf
+      - ${BASE_PATH}/${APP_FOLDER}/${SITE_CONF}://usr/local/apache2/conf/site.conf
+    networks: 
+      - frontend
+      - backend
+
+  mysql:
+    image: mysql:8
+    container_name: 'ticketing_db'
+    command: 
+      --innodb_use_native_aio=0 
+      --default-authentication-plugin=mysql_native_password
+    expose:
+      - '3306'
+    ports:
+      - 3306:3306
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}/${MYSQL_DB_FOLDER}:/var/lib/mysql:rw,delegated
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASS}
+      - ALLOW_EMPTY_PASSWORD=${MYSQL_ALLOW_EMPTY_PASS}
+    networks:
+      - backend
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: 'ticketing_phpmyadmin'
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_ABSOLUTE_URI: https://ticketing-docker.com/phpmyadmin
+      PMA_ARBITRARY: 1
+    restart: always
+    expose:
+      - '80'
+    depends_on:
+      - mysql
+    networks:
+      - backend
+
+  redis:
+    image: redis:latest
+    container_name: 'ticketing_redis'
+    restart: unless-stopped
+    networks:
+      - backend
+    expose:
+      - '6379'
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}/${REDIS_DATA_FOLDER}:/var/lib/redis/data
+      - ${BASE_PATH}/${APP_FOLDER}/${REDIS_CONF}:/usr/local/etc/redis/redis.conf
+
+  laravelecho:
+    build: './.docker/laravel-echo-server'
+    container_name: 'ticketing_echo_server'
+    restart: unless-stopped
+    networks:
+      - backend
+    expose:
+      - '6598'
+    depends_on:
+      - redis
+    volumes:
+      - ${BASE_PATH}/${APP_FOLDER}/laravel-echo-server.json:/app/laravel-echo-server.json
+
+networks:
+  frontend:
+  backend:
